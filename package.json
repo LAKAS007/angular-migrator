@@ -1,0 +1,25 @@
+{
+  "name": "angular-migrator",
+  "version": "1.0.0",
+  "description": "Mechanical migration tool for Angular projects (v15 → v19)",
+  "main": "dist/index.js",
+  "bin": {
+    "ng-migrate": "dist/index.js"
+  },
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "tsc",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^12.0.0",
+    "glob": "^10.4.5",
+    "ts-morph": "^22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
