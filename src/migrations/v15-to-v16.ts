@@ -6,6 +6,7 @@ import {
   ensureModuleWithProvidersGeneric,
   moveImport,
   removeObsoleteImport,
+  removeFromNgModuleArrays,
 } from '../utils/codemods';
 
 /**
@@ -113,12 +114,12 @@ export const v15ToV16: MigrationStep = {
       sourceFiles, '@angular/platform-browser', 'BrowserTransferStateModule', ctx
     );
     btsmChanges.forEach(c => ctx.logger.change(c.file, c.description));
-    btsmWarnings.forEach(w => ctx.logger.warn(w.message));
     result.changes.push(...btsmChanges);
-    result.warnings.push(...btsmWarnings.map(w => ({
-      ...w,
-      message: `BrowserTransferStateModule removed. Remove from NgModule imports[], TransferState is now injected automatically.`,
-    })));
+
+    // Also remove BrowserTransferStateModule from NgModule imports[] arrays
+    const btsmArrayChanges = removeFromNgModuleArrays(sourceFiles, 'BrowserTransferStateModule', ctx);
+    btsmArrayChanges.forEach(c => ctx.logger.change(c.file, c.description));
+    result.changes.push(...btsmArrayChanges);
 
     // ServerTransferStateModule — removed
     const { changes: stsmChanges, warnings: stsmWarnings } = removeObsoleteImport(
@@ -126,6 +127,9 @@ export const v15ToV16: MigrationStep = {
     );
     stsmChanges.forEach(c => ctx.logger.change(c.file, c.description));
     result.changes.push(...stsmChanges);
+    const stsmArrayChanges = removeFromNgModuleArrays(sourceFiles, 'ServerTransferStateModule', ctx);
+    stsmArrayChanges.forEach(c => ctx.logger.change(c.file, c.description));
+    result.changes.push(...stsmArrayChanges);
     result.warnings.push(...stsmWarnings.map(w => ({
       ...w,
       message: `ServerTransferStateModule removed. Remove from NgModule imports[], TransferState is now injected automatically.`,

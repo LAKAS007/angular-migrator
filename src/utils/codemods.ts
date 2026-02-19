@@ -191,6 +191,69 @@ export function removeObsoleteImport(
 }
 
 // ---------------------------------------------------------------------------
+// Remove symbol from NgModule imports/declarations/exports arrays
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove a symbol from NgModule imports/declarations/exports arrays.
+ * Handles both the import statement AND the usage inside @NgModule decorator.
+ *
+ * e.g. BrowserTransferStateModule, ServerTransferStateModule
+ */
+export function removeFromNgModuleArrays(
+  sourceFiles: SourceFile[],
+  symbolName: string,
+  ctx: MigrationContext
+): Change[] {
+  const changes: Change[] = [];
+
+  for (const sf of sourceFiles) {
+    let fileChanged = false;
+
+    sf.getClasses().forEach(cls => {
+      cls.getDecorators().forEach(dec => {
+        if (dec.getName() !== 'NgModule' && dec.getName() !== 'Component') return;
+
+        const args = dec.getArguments();
+        if (args.length === 0) return;
+
+        const arg = args[0];
+        if (!Node.isObjectLiteralExpression(arg)) return;
+
+        // Check imports, declarations, exports arrays
+        for (const arrayProp of ['imports', 'declarations', 'exports'] as const) {
+          const prop = arg.getProperty(arrayProp);
+          if (!prop || !Node.isPropertyAssignment(prop)) continue;
+
+          const initializer = prop.getInitializer();
+          if (!Node.isArrayLiteralExpression(initializer)) continue;
+
+          const elements = initializer.getElements();
+          elements.forEach(el => {
+            // Match plain identifier: BrowserTransferStateModule
+            if (Node.isIdentifier(el) && el.getText() === symbolName) {
+              el.remove();
+              fileChanged = true;
+              changes.push({
+                file: sf.getFilePath(),
+                description: `Removed '${symbolName}' from @${dec.getName()} ${arrayProp}[]`,
+              });
+            }
+            // Match call expression: BrowserModule.withServerTransition(...) already handled elsewhere
+          });
+        }
+      });
+    });
+
+    if (fileChanged && !ctx.dryRun) {
+      sf.saveSync();
+    }
+  }
+
+  return changes;
+}
+
+// ---------------------------------------------------------------------------
 // ComponentFactory / ComponentFactoryResolver migration (v16 → v17)
 // ---------------------------------------------------------------------------
 
