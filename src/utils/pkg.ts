@@ -44,6 +44,11 @@ export function updatePackageVersions(
   ctx: MigrationContext,
   updates: Record<string, string>
 ): Change[] {
+  if (ctx.skipPackageJson) {
+    ctx.logger.info('Skipping package.json version updates (--skip-package-json)');
+    return [];
+  }
+
   const pkg = readPackageJson(ctx.projectPath);
   const changes: Change[] = [];
   const sections: Array<keyof PackageJson> = ['dependencies', 'devDependencies', 'peerDependencies'];

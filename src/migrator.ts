@@ -17,12 +17,14 @@ const ALL_STEPS: MigrationStep[] = [
 
 export interface MigratorOptions {
   projectPath: string;
+  fromVersion?: number;
   toVersion?: number;
   dryRun?: boolean;
+  skipPackageJson?: boolean;
 }
 
 export async function migrate(options: MigratorOptions): Promise<void> {
-  const { projectPath, dryRun = false } = options;
+  const { projectPath, dryRun = false, skipPackageJson = false } = options;
   const logger = new ConsoleLogger();
 
   const absPath = path.resolve(projectPath);
@@ -30,7 +32,8 @@ export async function migrate(options: MigratorOptions): Promise<void> {
     throw new Error(`Project path does not exist: ${absPath}`);
   }
 
-  const currentVersion = detectAngularVersion(absPath);
+  // Allow explicit --from override (useful when package.json already has the target version)
+  const currentVersion = options.fromVersion ?? detectAngularVersion(absPath);
   const toVersion = options.toVersion ?? 19;
 
   console.log('');
@@ -40,6 +43,7 @@ export async function migrate(options: MigratorOptions): Promise<void> {
   console.log(`  From    : Angular ${currentVersion}`);
   console.log(`  To      : Angular ${toVersion}`);
   console.log(`  Dry run : ${dryRun ? 'YES (no files will be changed)' : 'NO'}`);
+  console.log(`  pkg.json: ${skipPackageJson ? 'SKIP (versions untouched)' : 'UPDATE'}`);
   console.log(`  ─────────────────────────────────────────`);
   console.log('');
 
@@ -65,6 +69,7 @@ export async function migrate(options: MigratorOptions): Promise<void> {
       fromVersion: step.from,
       toVersion: step.to,
       dryRun,
+      skipPackageJson,
       logger,
     };
 

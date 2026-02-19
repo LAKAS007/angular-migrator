@@ -3,6 +3,7 @@ export interface MigrationContext {
   fromVersion: number;
   toVersion: number;
   dryRun: boolean;
+  skipPackageJson: boolean;
   logger: Logger;
 }
 
