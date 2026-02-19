@@ -13,22 +13,23 @@ export function createTsProject(projectPath: string): Project {
   const tsConfigPath = path.join(projectPath, 'tsconfig.json');
   const tsConfigAppPath = path.join(projectPath, 'tsconfig.app.json');
 
-  const configFile = require('fs').existsSync(tsConfigAppPath)
+  const configFile = fs.existsSync(tsConfigAppPath)
     ? tsConfigAppPath
     : tsConfigPath;
 
-  if (require('fs').existsSync(configFile)) {
-    return new Project({ tsConfigFilePath: configFile, skipAddingFilesFromTsConfig: false });
-  }
+  const project = fs.existsSync(configFile)
+    ? new Project({ tsConfigFilePath: configFile, skipAddingFilesFromTsConfig: false })
+    : new Project();
 
-  // Fallback: add files manually
-  const project = new Project();
+  // Always add ALL .ts files explicitly — tsconfig may exclude barrel files,
+  // shared modules, or files outside src/ that still need to be migrated.
   const tsFiles = globSync('**/*.ts', {
     cwd: projectPath,
-    ignore: ['node_modules/**', 'dist/**', '**/*.spec.ts'],
+    ignore: ['node_modules/**', 'dist/**'],
     absolute: true,
   });
   project.addSourceFilesAtPaths(tsFiles);
+
   return project;
 }
 
