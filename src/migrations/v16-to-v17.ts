@@ -134,13 +134,18 @@ export const v16ToV17: MigrationStep = {
 
     // @nguniversal/express-engine → @angular/ssr (TypeScript imports)
     ctx.logger.info('Migrating @nguniversal/express-engine imports → @angular/ssr...');
-    for (const sym of ['ngExpressEngine', 'CommonEngine'] as const) {
-      const ssrChanges = moveImport(
-        sourceFiles, sym, '@nguniversal/express-engine', '@angular/ssr', ctx
-      );
-      ssrChanges.forEach(c => ctx.logger.change(c.file, c.description));
-      result.changes.push(...ssrChanges);
-    }
+    const ngExpressChanges = moveImport(
+      sourceFiles, 'ngExpressEngine', '@nguniversal/express-engine', '@angular/ssr', ctx
+    );
+    ngExpressChanges.forEach(c => ctx.logger.change(c.file, c.description));
+    result.changes.push(...ngExpressChanges);
+
+    // CommonEngine lives in @angular/ssr/node (Node.js-specific subpath)
+    const commonEngineChanges = moveImport(
+      sourceFiles, 'CommonEngine', '@nguniversal/express-engine', '@angular/ssr/node', ctx
+    );
+    commonEngineChanges.forEach(c => ctx.logger.change(c.file, c.description));
+    result.changes.push(...commonEngineChanges);
 
     // Remove domino SSR polyfill
     ctx.logger.info('Removing domino SSR polyfill...');
