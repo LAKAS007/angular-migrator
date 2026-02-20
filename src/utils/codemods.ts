@@ -500,7 +500,7 @@ export function addStandaloneFalse(
   const decorators = ['Component', 'Directive', 'Pipe'];
 
   for (const sf of sourceFiles) {
-    let fileChanged = false;
+    const insertions: Array<{ pos: number; text: string; description: string }> = [];
 
     sf.getClasses().forEach(cls => {
       cls.getDecorators().forEach(dec => {
@@ -512,27 +512,67 @@ export function addStandaloneFalse(
         const arg = args[0];
         if (!Node.isObjectLiteralExpression(arg)) return;
 
-        const hasStandalone = arg.getProperties().some(p =>
+        const properties = arg.getProperties();
+        if (properties.length === 0) return;
+
+        const hasStandalone = properties.some(p =>
           Node.isPropertyAssignment(p) && p.getName() === 'standalone'
         );
 
         if (!hasStandalone) {
-          // Insert standalone: false as the first property
-          arg.insertPropertyAssignment(0, {
-            name: 'standalone',
-            initializer: 'false',
-          });
-          fileChanged = true;
-          changes.push({
-            file: sf.getFilePath(),
+          const sfText = sf.getFullText();
+
+          // Detect indentation from first property's line
+          const firstProp = properties[0];
+          const firstPropPos = firstProp.getStart();
+          let lineStart = firstPropPos - 1;
+          while (lineStart >= 0 && sfText[lineStart] !== '\n') lineStart--;
+          const indent = sfText.slice(lineStart + 1, firstPropPos);
+
+          // Insert after the last property (at the end of the decorator)
+          const lastProp = properties[properties.length - 1];
+          const insertPos = lastProp.getEnd();
+
+          // Check for existing trailing comma after last property
+          const textAfter = sfText.slice(insertPos, insertPos + 10);
+          const commaMatch = textAfter.match(/^(\s*,)/);
+
+          let actualPos: number;
+          let insertText: string;
+          if (commaMatch) {
+            // Already has a trailing comma — insert after it
+            actualPos = insertPos + commaMatch[1].length;
+            insertText = `\n${indent}standalone: false`;
+          } else {
+            // No trailing comma — add one
+            actualPos = insertPos;
+            insertText = `,\n${indent}standalone: false`;
+          }
+
+          insertions.push({
+            pos: actualPos,
+            text: insertText,
             description: `@${dec.getName()}(${cls.getName() ?? ''}): added standalone: false (Angular 19 default changed to true)`,
           });
         }
       });
     });
 
-    if (fileChanged && !ctx.dryRun) {
-      sf.saveSync();
+    if (insertions.length > 0) {
+      // Apply in reverse order to keep earlier positions valid
+      insertions.sort((a, b) => b.pos - a.pos);
+      if (!ctx.dryRun) {
+        for (const ins of insertions) {
+          sf.insertText(ins.pos, ins.text);
+        }
+        sf.saveSync();
+      }
+      for (const ins of insertions) {
+        changes.push({
+          file: sf.getFilePath(),
+          description: ins.description,
+        });
+      }
     }
   }
 
