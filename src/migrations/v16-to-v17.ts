@@ -1,14 +1,16 @@
 import { MigrationStep, MigrationContext, MigrationResult } from '../types';
-import { updatePackageVersions } from '../utils/pkg';
+import { updatePackageVersions, replacePackageDependency } from '../utils/pkg';
 import { migrateBrowserBuilderToApplication, removeDefaultProject } from '../utils/angular-json';
 import {
   createTsProject,
   getSourceFiles,
   renameNamedImport,
+  moveImport,
   removeObsoleteImport,
   migrateComponentFactoryResolver,
   migrateCanLoadToCanMatch,
   fixZoneJsImports,
+  removeDominoSetup,
 } from '../utils/codemods';
 import { SyntaxKind, Node } from 'ts-morph';
 
@@ -98,6 +100,17 @@ export const v16ToV17: MigrationStep = {
     zoneChanges.forEach(c => ctx.logger.change(c.file, c.description));
     result.changes.push(...zoneChanges);
 
+    // 3a. @nguniversal/express-engine → @angular/ssr (package.json)
+    ctx.logger.info('Replacing @nguniversal/express-engine with @angular/ssr...');
+    const ssrPkgChanges = replacePackageDependency(
+      ctx,
+      '@nguniversal/express-engine',
+      '@angular/ssr',
+      '^17.3.0'
+    );
+    ssrPkgChanges.forEach(c => ctx.logger.change(c.file, c.description));
+    result.changes.push(...ssrPkgChanges);
+
     // 4. TypeScript codemods
     ctx.logger.info('Scanning TypeScript files...');
     let project;
@@ -118,6 +131,22 @@ export const v16ToV17: MigrationStep = {
     );
     routerLinkChanges.forEach(c => ctx.logger.change(c.file, c.description));
     result.changes.push(...routerLinkChanges);
+
+    // @nguniversal/express-engine → @angular/ssr (TypeScript imports)
+    ctx.logger.info('Migrating @nguniversal/express-engine imports → @angular/ssr...');
+    for (const sym of ['ngExpressEngine', 'CommonEngine'] as const) {
+      const ssrChanges = moveImport(
+        sourceFiles, sym, '@nguniversal/express-engine', '@angular/ssr', ctx
+      );
+      ssrChanges.forEach(c => ctx.logger.change(c.file, c.description));
+      result.changes.push(...ssrChanges);
+    }
+
+    // Remove domino SSR polyfill
+    ctx.logger.info('Removing domino SSR polyfill...');
+    const dominoChanges = removeDominoSetup(sourceFiles, ctx);
+    dominoChanges.forEach(c => ctx.logger.change(c.file, c.description));
+    result.changes.push(...dominoChanges);
 
     // CanLoad → CanMatch
     ctx.logger.info('Migrating CanLoad → CanMatch...');

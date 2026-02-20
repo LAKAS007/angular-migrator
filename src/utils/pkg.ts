@@ -37,6 +37,43 @@ export function detectAngularVersion(projectPath: string): number {
 }
 
 /**
+ * Replace one package with another across all dependency sections.
+ * If oldName exists, removes it and adds newName with newVersion.
+ * If oldName doesn't exist, does nothing (package not used in this project).
+ */
+export function replacePackageDependency(
+  ctx: MigrationContext,
+  oldName: string,
+  newName: string,
+  newVersion: string
+): Change[] {
+  if (ctx.skipPackageJson) return [];
+
+  const pkg = readPackageJson(ctx.projectPath);
+  const changes: Change[] = [];
+  const sections: Array<keyof PackageJson> = ['dependencies', 'devDependencies', 'peerDependencies'];
+
+  for (const section of sections) {
+    const deps = pkg[section] as Record<string, string> | undefined;
+    if (!deps || !(oldName in deps)) continue;
+
+    const oldVersion = deps[oldName];
+    delete deps[oldName];
+    deps[newName] = newVersion;
+    changes.push({
+      file: 'package.json',
+      description: `${section}: replaced ${oldName} (${oldVersion}) with ${newName} (${newVersion})`,
+    });
+  }
+
+  if (changes.length > 0 && !ctx.dryRun) {
+    writePackageJson(ctx.projectPath, pkg);
+  }
+
+  return changes;
+}
+
+/**
  * Update package versions in all dependency sections.
  * Only updates if the package is already present.
  */

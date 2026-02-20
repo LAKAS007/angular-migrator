@@ -677,3 +677,67 @@ export function getSourceFiles(project: Project, projectPath: string): SourceFil
     return !fp.includes('node_modules') && !fp.includes('/dist/');
   });
 }
+
+// ---------------------------------------------------------------------------
+// domino SSR polyfill removal (v16 → v17, @angular/ssr replaces domino)
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove domino SSR polyfill setup from server.ts (and any other file that imports it).
+ *
+ * Removes:
+ *   import * as domino from 'domino';
+ *   const win = domino.createWindow(template);
+ *   global['window'] = win;
+ *   global['document'] = win.document;
+ *
+ * @angular/ssr (Angular 17+) handles DOM emulation natively — domino is not needed.
+ */
+export function removeDominoSetup(
+  sourceFiles: SourceFile[],
+  ctx: MigrationContext
+): Change[] {
+  const changes: Change[] = [];
+
+  for (const sf of sourceFiles) {
+    const dominoImport = sf.getImportDeclarations()
+      .find(imp => imp.getModuleSpecifierValue() === 'domino');
+
+    if (!dominoImport) continue;
+
+    // Determine the local name: `import * as domino` or `import domino`
+    const dominoName =
+      dominoImport.getNamespaceImport()?.getText() ||
+      dominoImport.getDefaultImport()?.getText() ||
+      'domino';
+
+    const filePath = sf.getFilePath();
+
+    if (!ctx.dryRun) {
+      // 1. Remove the import via ts-morph AST
+      dominoImport.remove();
+      sf.saveSync();
+
+      // 2. Remove domino setup lines with text manipulation
+      const fileText = fs.readFileSync(filePath, 'utf-8');
+      const filteredLines = fileText.split('\n').filter(line => {
+        const t = line.trim();
+        // const win = domino.createWindow(...)
+        if (t.includes(`${dominoName}.createWindow(`)) return false;
+        // global['window'] = ... / global["window"] = ... / (global as any)['window'] = ...
+        if (t.includes('global') && (t.includes("['window']") || t.includes('["window"]'))) return false;
+        // global['document'] = ... / global["document"] = ...
+        if (t.includes('global') && (t.includes("['document']") || t.includes('["document"]'))) return false;
+        return true;
+      });
+      fs.writeFileSync(filePath, filteredLines.join('\n'), 'utf-8');
+    }
+
+    changes.push({
+      file: filePath,
+      description: `Removed domino SSR polyfill setup — not needed with @angular/ssr in Angular 17+`,
+    });
+  }
+
+  return changes;
+}
