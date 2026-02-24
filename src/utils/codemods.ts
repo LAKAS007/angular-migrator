@@ -500,7 +500,9 @@ export function addStandaloneFalse(
   const decorators = ['Component', 'Directive', 'Pipe'];
 
   for (const sf of sourceFiles) {
-    const insertions: Array<{ pos: number; text: string; description: string }> = [];
+    // Each operation is either a replacement [start, end) → text
+    // or an insertion (start === end) at a single position.
+    const ops: Array<{ start: number; end: number; text: string; description: string }> = [];
 
     sf.getClasses().forEach(cls => {
       cls.getDecorators().forEach(dec => {
@@ -521,63 +523,65 @@ export function addStandaloneFalse(
 
         if (!hasStandalone) {
           const sfText = sf.getFullText();
+          const description = `@${dec.getName()}(${cls.getName() ?? ''}): added standalone: false (Angular 19 default changed to true)`;
 
-          // Detect indentation from the decorator's line.
-          // For multi-line decorators the first property is on its own indented line.
-          // For single-line decorators (@Pipe({ name: '...' })) the slice from
-          // line-start to the property position contains "@Pipe({" — we must
-          // extract only the leading whitespace, not the whole prefix.
-          const firstProp = properties[0];
-          const firstPropPos = firstProp.getStart();
-          let lineStart = firstPropPos - 1;
-          while (lineStart >= 0 && sfText[lineStart] !== '\n') lineStart--;
-          const linePrefix = sfText.slice(lineStart + 1, firstPropPos);
-          // Leading whitespace only — e.g. "  " from "  @Pipe({ name: ..."
-          const indent = linePrefix.match(/^(\s*)/)?.[1] ?? '  ';
+          // Detect decorator line's base indentation (leading whitespace only)
+          const decStart = dec.getStart();
+          let decLineStart = decStart - 1;
+          while (decLineStart >= 0 && sfText[decLineStart] !== '\n') decLineStart--;
+          const decLinePrefix = sfText.slice(decLineStart + 1, decStart);
+          const decIndent = decLinePrefix.match(/^(\s*)/)?.[1] ?? '';
+          const propIndent = decIndent + '  ';
 
-          // Insert after the last property (at the end of the decorator)
-          const lastProp = properties[properties.length - 1];
-          const insertPos = lastProp.getEnd();
+          // Is the decorator single-line? (first property on same line as '{')
+          const argOpenPos = arg.getStart();
+          const firstPropPos = properties[0].getStart();
+          const isSingleLine = !sfText.slice(argOpenPos, firstPropPos).includes('\n');
 
-          // Check for existing trailing comma after last property
-          const textAfter = sfText.slice(insertPos, insertPos + 10);
-          const commaMatch = textAfter.match(/^(\s*,)/);
-
-          let actualPos: number;
-          let insertText: string;
-          if (commaMatch) {
-            // Already has a trailing comma — insert after it
-            actualPos = insertPos + commaMatch[1].length;
-            insertText = `\n${indent}standalone: false`;
+          if (isSingleLine) {
+            // Expand to multi-line: replace the whole object literal
+            // { name: 'x' }  →  {\n  name: 'x',\n  standalone: false\n}
+            const propTexts = properties.map(p => `${propIndent}${p.getText()}`);
+            propTexts.push(`${propIndent}standalone: false`);
+            const newObjText = `{\n${propTexts.join(',\n')}\n${decIndent}}`;
+            ops.push({ start: arg.getStart(), end: arg.getEnd(), text: newObjText, description });
           } else {
-            // No trailing comma — add one
-            actualPos = insertPos;
-            insertText = `,\n${indent}standalone: false`;
-          }
+            // Already multi-line: insert after last property using detected propIndent
+            const lastProp = properties[properties.length - 1];
+            const insertPos = lastProp.getEnd();
+            const textAfter = sfText.slice(insertPos, insertPos + 10);
+            const commaMatch = textAfter.match(/^(\s*,)/);
 
-          insertions.push({
-            pos: actualPos,
-            text: insertText,
-            description: `@${dec.getName()}(${cls.getName() ?? ''}): added standalone: false (Angular 19 default changed to true)`,
-          });
+            let start: number;
+            let insertText: string;
+            if (commaMatch) {
+              start = insertPos + commaMatch[1].length;
+              insertText = `\n${propIndent}standalone: false`;
+            } else {
+              start = insertPos;
+              insertText = `,\n${propIndent}standalone: false`;
+            }
+            ops.push({ start, end: start, text: insertText, description });
+          }
         }
       });
     });
 
-    if (insertions.length > 0) {
-      // Apply in reverse order to keep earlier positions valid
-      insertions.sort((a, b) => b.pos - a.pos);
+    if (ops.length > 0) {
+      // Apply in reverse order so earlier positions stay valid
+      ops.sort((a, b) => b.start - a.start);
       if (!ctx.dryRun) {
-        for (const ins of insertions) {
-          sf.insertText(ins.pos, ins.text);
+        for (const op of ops) {
+          if (op.start === op.end) {
+            sf.insertText(op.start, op.text);
+          } else {
+            sf.replaceText([op.start, op.end], op.text);
+          }
         }
         sf.saveSync();
       }
-      for (const ins of insertions) {
-        changes.push({
-          file: sf.getFilePath(),
-          description: ins.description,
-        });
+      for (const op of ops) {
+        changes.push({ file: sf.getFilePath(), description: op.description });
       }
     }
   }
