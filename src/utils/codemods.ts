@@ -233,7 +233,7 @@ export function removeFromNgModuleArrays(
           elements.forEach(el => {
             // Match plain identifier: BrowserTransferStateModule
             if (Node.isIdentifier(el) && el.getText() === symbolName) {
-              el.remove();
+              initializer.removeElement(el);
               fileChanged = true;
               changes.push({
                 file: sf.getFilePath(),
