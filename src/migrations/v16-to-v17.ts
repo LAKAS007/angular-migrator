@@ -1,6 +1,6 @@
 import { MigrationStep, MigrationContext, MigrationResult } from '../types';
 import { updatePackageVersions, replacePackageDependency } from '../utils/pkg';
-import { migrateBrowserBuilderToApplication, removeDefaultProject } from '../utils/angular-json';
+import { migrateBrowserBuilderToApplication, removeDefaultProject, renameBrowserTargetToBuildTarget } from '../utils/angular-json';
 import {
   createTsProject,
   getSourceFiles,
@@ -93,6 +93,12 @@ export const v16ToV17: MigrationStep = {
     const defaultProjectChanges = removeDefaultProject(ctx);
     defaultProjectChanges.forEach(c => ctx.logger.change(c.file, c.description));
     result.changes.push(...defaultProjectChanges);
+
+    // browserTarget → buildTarget (Angular 17)
+    ctx.logger.info('Renaming browserTarget → buildTarget in angular.json...');
+    const buildTargetChanges = renameBrowserTargetToBuildTarget(ctx);
+    buildTargetChanges.forEach(c => ctx.logger.change(c.file, c.description));
+    result.changes.push(...buildTargetChanges);
 
     // 3. zone.js import path fixes
     ctx.logger.info('Fixing zone.js import paths...');

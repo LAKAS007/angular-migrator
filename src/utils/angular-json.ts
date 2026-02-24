@@ -90,6 +90,57 @@ export function migrateBrowserBuilderToApplication(
 }
 
 /**
+ * Rename `browserTarget` → `buildTarget` across all architect targets in angular.json.
+ *
+ * Affected targets: serve, test, extract-i18n, and any custom targets.
+ * The key can appear in options{} and configurations.*.
+ *
+ * Before:
+ *   "serve": { "configurations": { "production": { "browserTarget": "app:build:production" } } }
+ * After:
+ *   "serve": { "configurations": { "production": { "buildTarget": "app:build:production" } } }
+ */
+export function renameBrowserTargetToBuildTarget(ctx: MigrationContext): Change[] {
+  const config = readAngularJson(ctx.projectPath);
+  if (!config) return [];
+
+  const changes: Change[] = [];
+
+  // Recursively rename browserTarget → buildTarget in any object
+  function renameInObject(obj: unknown, location: string): void {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
+
+    const record = obj as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key === 'browserTarget') {
+        record['buildTarget'] = record['browserTarget'];
+        delete record['browserTarget'];
+        changes.push({
+          file: 'angular.json',
+          description: `[${location}] "browserTarget" renamed to "buildTarget"`,
+        });
+      } else {
+        renameInObject(record[key], `${location}.${key}`);
+      }
+    }
+  }
+
+  const projects = config['projects'] as Record<string, unknown> | undefined;
+  if (projects) {
+    for (const [projectName, project] of Object.entries(projects)) {
+      const architect = (project as Record<string, unknown>)['architect'];
+      renameInObject(architect, projectName);
+    }
+  }
+
+  if (changes.length > 0 && !ctx.dryRun) {
+    writeAngularJson(ctx.projectPath, config);
+  }
+
+  return changes;
+}
+
+/**
  * Remove deprecated `defaultProject` field from workspace root (removed in Angular 17).
  */
 export function removeDefaultProject(ctx: MigrationContext): Change[] {
