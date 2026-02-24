@@ -522,12 +522,18 @@ export function addStandaloneFalse(
         if (!hasStandalone) {
           const sfText = sf.getFullText();
 
-          // Detect indentation from first property's line
+          // Detect indentation from the decorator's line.
+          // For multi-line decorators the first property is on its own indented line.
+          // For single-line decorators (@Pipe({ name: '...' })) the slice from
+          // line-start to the property position contains "@Pipe({" — we must
+          // extract only the leading whitespace, not the whole prefix.
           const firstProp = properties[0];
           const firstPropPos = firstProp.getStart();
           let lineStart = firstPropPos - 1;
           while (lineStart >= 0 && sfText[lineStart] !== '\n') lineStart--;
-          const indent = sfText.slice(lineStart + 1, firstPropPos);
+          const linePrefix = sfText.slice(lineStart + 1, firstPropPos);
+          // Leading whitespace only — e.g. "  " from "  @Pipe({ name: ..."
+          const indent = linePrefix.match(/^(\s*)/)?.[1] ?? '  ';
 
           // Insert after the last property (at the end of the decorator)
           const lastProp = properties[properties.length - 1];
